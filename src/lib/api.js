@@ -27,4 +27,12 @@ export const api = {
 
   // Pulse
   getPulse: () => request('/api/pulse'),
+
+  // Reflections
+  getReflections: () => request('/api/reflections'),
+  saveReflection: (week_number, text) => request('/api/reflections', { method: 'POST', body: JSON.stringify({ week_number, text }) }),
+
+  // Group message from leader
+  getMessage: () => request('/api/message'),
+  dismissMessage: (id) => request('/api/message', { method: 'POST', body: JSON.stringify({ id }) }),
 };

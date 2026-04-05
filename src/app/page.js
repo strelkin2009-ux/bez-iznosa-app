@@ -54,6 +54,17 @@ function App(){
   const[pExp,setPE]=useState(false);
   const[showS,setSS]=useState(false);
   const[err,setErr]=useState("");
+  const[leaderMsg,setLM]=useState(null);
+  const[dismissedMsg,setDM]=useState(null);
+  const[reflections,setRefl]=useState({});
+  const[showRefl,setSR]=useState(false);
+  const[reflText,setRT]=useState("");
+
+  function loadExtras(){
+    api.getPulse().then(setPulse).catch(function(){});
+    api.getMessage().then(function(d){setLM(d.message);}).catch(function(){});
+    api.getReflections().then(function(d){setRefl(d.reflections||{});}).catch(function(){});
+  }
 
   // Check session on load
   useEffect(function(){
@@ -63,7 +74,7 @@ function App(){
       else if(!d.user.letterDone)setPhase("letter");
       else setPhase("main");
       return api.getProgress();
-    }).then(function(p){setProg(p);api.getPulse().then(setPulse).catch(function(){});}).catch(function(){setPhase("login");});
+    }).then(function(p){setProg(p);loadExtras();}).catch(function(){setPhase("login");});
   },[]);
 
   async function handleLogin(name,code){
@@ -72,11 +83,18 @@ function App(){
       const d=await api.login(name,code);
       setUser(d.user);setGroup(d.group);
       const p=await api.getProgress();setProg(p);
-      api.getPulse().then(setPulse).catch(function(){});
+      loadExtras();
       if(!d.user.onboarded)setPhase("onboard");
       else if(!d.user.letterDone)setPhase("letter");
       else setPhase("main");
     }catch(e){setErr(e.message);}
+  }
+
+  async function saveRefl(week){
+    if(!reflText.trim())return;
+    await api.saveReflection(week,reflText.trim());
+    setRefl(function(r){var n={...r};n[week]=reflText.trim();return n;});
+    setRT("");setSR(false);
   }
 
   // Computed
@@ -167,6 +185,8 @@ function App(){
 
     {(active||ended)&&<div style={{padding:"0 16px 32px"}}>
       {tab==="main"&&<div style={{animation:"fi .3s",paddingTop:12}}>
+        {/* Leader message */}
+        {leaderMsg&&leaderMsg.id!==dismissedMsg&&<Card style={{background:"#FDF6F0",border:"1px solid #D4956E44"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div><div style={{fontSize:10,color:"#B8673E",fontWeight:600,marginBottom:4}}>💬 Сообщение от ведущего</div><div style={{fontSize:13,lineHeight:1.5}}>{leaderMsg.message}</div></div><div onClick={function(){setDM(leaderMsg.id);}} style={{fontSize:16,color:"#8A837B",cursor:"pointer",padding:"0 4px",flexShrink:0}}>×</div></div></Card>}
         {eve&&active&&!tDone&&!tQuiet&&<Card style={{textAlign:"center"}}><div style={{fontSize:13,color:"#D4956E"}}>3 минуты вместо скроллинга</div></Card>}
         {ms&&tDone&&<Card style={{textAlign:"center",background:eve?"#3A3632":"#F0E6DC"}}><div style={{fontSize:12,color:"#B8673E",fontWeight:600}}>{ms}</div></Card>}
         {show2Q&&<Card style={{textAlign:"center",border:"1px solid #D4956E44"}}><div style={{fontSize:10,color:"#8A837B"}}>Помнишь, зачем?</div><div style={{fontSize:13,color:"#B8673E",fontWeight:600}}>«{user.anchor}»</div></Card>}
@@ -177,13 +197,16 @@ function App(){
         {tQuiet&&!tDone&&<Card style={{textAlign:"center"}}><div style={{fontSize:13,color:"#5C5650"}}>Пропуск — не провал.</div><div style={{fontSize:12,color:"#8A837B",marginTop:2}}>Завтра начни заново.</div></Card>}
         {showCI&&!tDone&&<Card style={{animation:"su .3s"}}>{rev&&<div style={{marginBottom:10,padding:8,borderRadius:8,background:"#F0E6DC",textAlign:"center"}}><div style={{fontSize:9,color:"#B8673E",fontWeight:600,textTransform:"uppercase"}}>{TE[rev.t]} {TL[rev.t]}</div><div style={{fontSize:11,marginTop:2}}>{rev.tx}</div></div>}<div style={{fontSize:13,fontWeight:600,marginBottom:8}}>{tq.q}</div><div style={{display:"flex",flexDirection:"column",gap:6}}>{tq.o.map(function(o){return<Opt key={o} onClick={function(){subCI(o);}}>{o}</Opt>;})}</div></Card>}
         {tDone&&active&&<Card style={{textAlign:"center"}}><div style={{fontSize:24}}>✓</div><div style={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:600}}>Практика сделана</div><div style={{fontSize:10,color:"#B8673E",marginTop:8}}>Увидимся завтра</div></Card>}
+        {/* Weekly reflection prompt — show on last day of each week if not filled */}
+        {active&&diw===6&&!reflections[cw]&&tDone&&!showRefl&&<Card style={{textAlign:"center",border:"1px solid #D4956E44",cursor:"pointer"}} onClick={function(){setSR(true);}}><div style={{fontSize:10,color:"#B8673E",fontWeight:600}}>📝 Рефлексия недели</div><div style={{fontSize:12,color:"#5C5650",marginTop:4}}>Что изменилось? Одно предложение.</div></Card>}
+        {showRefl&&<Card style={{animation:"su .3s"}}><div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Что изменилось за эту неделю?</div><textarea value={reflText} onChange={function(e){setRT(e.target.value);}} placeholder="Одно предложение" rows={2} style={{width:"100%",padding:10,borderRadius:10,border:"1.5px solid #EDE8E0",fontSize:13,fontFamily:"inherit",outline:"none",background:"#F7F3EE",resize:"none",boxSizing:"border-box",marginBottom:8}}/><div style={{display:"flex",gap:8}}><Btn onClick={function(){setSR(false);}}>Отмена</Btn><Btn primary disabled={!reflText.trim()} onClick={function(){saveRefl(cw);}} style={{flex:2}}>Сохранить</Btn></div></Card>}
         {ended&&<Card style={{textAlign:"center"}}><div style={{fontSize:26}}>🎉</div><div style={{fontFamily:"Georgia,serif",fontSize:16,fontWeight:600}}>42 дня позади</div></Card>}
         {active&&<Card style={{padding:10}}><div style={{fontSize:9,color:"#8A837B",marginBottom:4}}>Пульс группы</div><div style={{display:"flex",gap:3}}>{Array.from({length:Math.max(pulse.total,1)}).map(function(_,i){return<div key={i} style={{flex:1,height:5,borderRadius:3,background:i<pulse.done?"#B8673E":"#EDE8E0",opacity:i<pulse.done?.7:.4}}/>;})}</div><div style={{fontSize:9,color:"#B8673E",marginTop:3,fontWeight:600}}>{pulse.done}/{pulse.total}</div></Card>}
       </div>}
 
       {tab==="mosaic"&&<div style={{animation:"fi .3s",paddingTop:12}}>{WT.map(function(wk,wi){return<div key={wi} style={{marginBottom:12}}><div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}><div style={{width:4,height:4,borderRadius:"50%",background:wk.c}}/><div style={{fontSize:9,fontWeight:600,color:wk.c}}>Нед. {wi+1} — {wk.n}</div></div><div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>{Array.from({length:7}).map(function(_,di){var d=wi*7+di;if(d>=DAYS)return<div key={di}/>;var done=!!prog.completedDays[d];var today=d===cd;var missed=d<cd&&!done;var quiet=!!prog.quietDays[d];if(missed&&quiet)return<div key={di} style={{width:"100%",aspectRatio:"1",borderRadius:5,background:"#E8E3DB",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:"#B0A99F"}}>·</div>;if(missed)return<div key={di} style={{width:"100%",aspectRatio:"1",borderRadius:5,background:"#E0DBD3",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,color:"#B0A99F"}}>—</div>;if(!done&&!today)return<div key={di} style={{width:"100%",aspectRatio:"1",borderRadius:5,background:"#EDE8E0",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#8A837B",opacity:.4}}>{d+1}</div>;if(today&&!done)return<div key={di} style={{width:"100%",aspectRatio:"1",borderRadius:5,background:wk.c+"22",border:"2px solid "+wk.c,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:wk.c,fontWeight:700,animation:"pulse 2s infinite"}}>{d+1}</div>;return<div key={di} style={{width:"100%",aspectRatio:"1",borderRadius:5,background:wk.c,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#FDFBF8",fontWeight:600}}>{TE[MOS[d].t]}</div>;})}</div></div>;})}</div>}
 
-      {tab==="stats"&&<div style={{animation:"fi .3s",paddingTop:12}}><div style={{fontFamily:"Georgia,serif",fontSize:16,fontWeight:600,marginBottom:10}}>Мой путь</div>{WT.map(function(wk,wi){var wd=[];for(var di=0;di<7;di++){var d=wi*7+di;if(d<DAYS)wd.push(d);}var wc2=wd.filter(function(d){return prog.completedDays[d];}).length;var wqt=wd.filter(function(d){return prog.quietDays[d];}).length;var wa=wd.filter(function(d){return prog.checkinAnswers[d];}).map(function(d){return prog.checkinAnswers[d];});var isCur=wi===cw&&active;var isFut=wi*7>cd;return<Card key={wi} style={{marginBottom:6,opacity:isFut?.3:1,borderLeft:isCur?"3px solid "+wk.c:"3px solid transparent"}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><div><span style={{fontSize:10,fontWeight:600,color:wk.c}}>{wk.n}</span></div><div style={{fontSize:10,fontWeight:700,color:wk.c}}>{wc2}/7{wqt>0?<span style={{fontSize:8,color:"#8A837B"}}> +{wqt}т</span>:null}</div></div><div style={{height:4,borderRadius:2,background:"#EDE8E0",overflow:"hidden"}}><div style={{height:"100%",width:(wc2/7*100)+"%",background:wk.c,borderRadius:2}}/></div>{wa.length>0&&<div style={{marginTop:4,display:"flex",flexWrap:"wrap",gap:2}}>{wa.map(function(a,i){return<span key={i} style={{fontSize:7,padding:"1px 5px",borderRadius:5,background:"#F0E6DC",color:"#5C5650"}}>{a}</span>;})}</div>}</Card>;})}
+      {tab==="stats"&&<div style={{animation:"fi .3s",paddingTop:12}}><div style={{fontFamily:"Georgia,serif",fontSize:16,fontWeight:600,marginBottom:10}}>Мой путь</div>{WT.map(function(wk,wi){var wd=[];for(var di=0;di<7;di++){var d=wi*7+di;if(d<DAYS)wd.push(d);}var wc2=wd.filter(function(d){return prog.completedDays[d];}).length;var wqt=wd.filter(function(d){return prog.quietDays[d];}).length;var wa=wd.filter(function(d){return prog.checkinAnswers[d];}).map(function(d){return prog.checkinAnswers[d];});var isCur=wi===cw&&active;var isFut=wi*7>cd;var refl=reflections[wi];return<Card key={wi} style={{marginBottom:6,opacity:isFut?.3:1,borderLeft:isCur?"3px solid "+wk.c:"3px solid transparent"}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><div><span style={{fontSize:10,fontWeight:600,color:wk.c}}>{wk.n}</span></div><div style={{fontSize:10,fontWeight:700,color:wk.c}}>{wc2}/7{wqt>0?<span style={{fontSize:8,color:"#8A837B"}}> +{wqt}т</span>:null}</div></div><div style={{height:4,borderRadius:2,background:"#EDE8E0",overflow:"hidden"}}><div style={{height:"100%",width:(wc2/7*100)+"%",background:wk.c,borderRadius:2}}/></div>{wa.length>0&&<div style={{marginTop:4,display:"flex",flexWrap:"wrap",gap:2}}>{wa.map(function(a,i){return<span key={i} style={{fontSize:7,padding:"1px 5px",borderRadius:5,background:"#F0E6DC",color:"#5C5650"}}>{a}</span>;})}</div>}{refl&&<div style={{marginTop:6,padding:"6px 10px",borderRadius:8,background:"#FDF6F0",fontSize:12,color:"#5C5650",fontStyle:"italic",lineHeight:1.4}}>📝 «{refl}»</div>}</Card>;})}
       <Card><div style={{fontFamily:"Georgia,serif",fontSize:13,fontWeight:600,marginBottom:6}}>Итого</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>{[{v:cc,l:"с практикой"},{v:Object.keys(prog.quietDays).length,l:"тихих"},{v:Math.round(vl)+"%",l:"сосуд"},{v:ended?"✓":Math.max(0,DAYS-cd-1),l:ended?"завершено":"осталось"}].map(function(s,i){return<div key={i} style={{textAlign:"center",padding:8,background:"#F7F3EE",borderRadius:6}}><div style={{fontFamily:"Georgia,serif",fontSize:18,fontWeight:700,color:"#B8673E"}}>{s.v}</div><div style={{fontSize:8,color:"#8A837B"}}>{s.l}</div></div>;})}</div></Card>
       {user.anchor&&<Card style={{textAlign:"center"}}><div style={{fontSize:9,color:"#8A837B"}}>⚓</div><div style={{fontSize:12,color:"#B8673E",fontWeight:600}}>«{user.anchor}»</div></Card>}
       {user.letter&&!ended&&<Card style={{textAlign:"center"}}><div style={{fontSize:9,color:"#8A837B"}}>✉️ Запечатано до дня 42</div></Card>}
